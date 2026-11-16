@@ -1,57 +1,71 @@
 /**
- * Pi statusline configuration.
+ * Pi statusline configuration, Codex-style.
  *
- * The extension reads this JSON at startup and whenever `/statusline reload` runs.
- * Every field is optional; unknown fields are ignored. Configuration is merged
- * over DEFAULT_CONFIG below.
+ * Six fields are always shown and cannot be disabled:
+ *   session name · project path · model · reasoning · run state · pi version
+ *
+ * Optional extras (git branch, context, tokens, cost, clock) can be layered on.
+ * Configuration is read at startup and on `/statusline reload`.
  *
  * Environment overrides:
  *   PI_STATUSLINE_CONFIG=/abs/path/to/config.json
  *   PI_STATUSLINE_ENABLED=0|1
  *   PI_STATUSLINE_PRESET=minimal|compact|full
+ *   PI_STATUSLINE_COLORS=0|1
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { SettingsLike } from "./types.ts";
 import { isAbsolute, join } from "node:path";
+import type { SettingsLike } from "./types.ts";
 
 export type Preset = "minimal" | "compact" | "full";
 
 export interface StatuslineConfig {
 	/** Whether the custom footer is installed on session start. */
 	enabled: boolean;
-	/** Which segments to show. */
+	/** Which optional extras to show. The six required fields are always present. */
 	preset: Preset;
-	/** Separator between segments on the same side. */
+	/** Separator between items (Codex uses " · "). */
 	separator: string;
-	/** Show the left-hand group. */
-	left: boolean;
-	/** Show the right-hand group. */
-	right: boolean;
-	/** Show a second line with the active extension statuses (ctx.ui.setStatus()). */
+	/** Show optional extras: git branch, context, tokens, cost, clock. */
+	extras: boolean;
+	/** Show a second line with other extensions' ctx.ui.setStatus() values. */
 	statuses: boolean;
-	/** Use Nerd Font glyphs where available. Set false for plain ASCII. */
+	/** Use Nerd Font glyphs where available. */
 	nerd: boolean;
-	/** Refresh the clock / working indicator at this interval, in ms. 0 disables the timer. */
+	/** Use Codex-like per-category colors instead of one dim color. */
+	colors: boolean;
+	/** Animation/clock refresh interval in ms; 0 disables the interval. */
 	refreshMs: number;
 }
 
 export const DEFAULT_CONFIG: StatuslineConfig = {
 	enabled: true,
 	preset: "compact",
-	separator: " │ ",
-	left: true,
-	right: true,
+	separator: " · ",
+	extras: true,
 	statuses: false,
 	nerd: false,
-	refreshMs: 1000,
+	colors: true,
+	refreshMs: 250,
 };
 
 const PRESETS: Record<Preset, Partial<StatuslineConfig>> = {
-	minimal: { left: true, right: false, statuses: false },
-	compact: { left: true, right: true, statuses: false },
-	full: { left: true, right: true, statuses: true },
+	minimal: { extras: false, statuses: false },
+	compact: { extras: true, statuses: false },
+	full: { extras: true, statuses: true },
 };
+
+export const PRESET_NAMES = Object.keys(PRESETS) as Preset[];
+
+export function isPreset(value: string): value is Preset {
+	return PRESET_NAMES.includes(value as Preset);
+}
+
+export function applyPreset(config: StatuslineConfig, preset: Preset): void {
+	Object.assign(config, PRESETS[preset]);
+	config.preset = preset;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -60,7 +74,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function configPaths(ctx: ExtensionContext): string[] {
 	const override = process.env.PI_STATUSLINE_CONFIG?.trim();
 	if (override) {
-		// Relative paths are resolved from cwd by node:fs, not from the extension.
 		return [isAbsolute(override) ? override : join(process.cwd(), override)];
 	}
 
@@ -73,9 +86,21 @@ function configPaths(ctx: ExtensionContext): string[] {
 	];
 }
 
-function applyPreset(config: StatuslineConfig, preset: Preset): void {
-	Object.assign(config, PRESETS[preset]);
-	config.preset = preset;
+function merge(config: StatuslineConfig, raw: unknown): void {
+	if (!isRecord(raw)) return;
+	if (typeof raw.enabled === "boolean") config.enabled = raw.enabled;
+	if (typeof raw.separator === "string") config.separator = raw.separator.slice(0, 12);
+	if (typeof raw.extras === "boolean") config.extras = raw.extras;
+	if (typeof raw.statuses === "boolean") config.statuses = raw.statuses;
+	if (typeof raw.nerd === "boolean") config.nerd = raw.nerd;
+	if (typeof raw.colors === "boolean") config.colors = raw.colors;
+	if (typeof raw.refreshMs === "number" && Number.isFinite(raw.refreshMs) && raw.refreshMs >= 0) {
+		config.refreshMs = Math.min(60_000, Math.floor(raw.refreshMs));
+	}
+	if (typeof raw.preset === "string" && isPreset(raw.preset)) applyPreset(config, raw.preset);
+	// Explicit keys override the preset's defaults.
+	if (typeof raw.extras === "boolean") config.extras = raw.extras;
+	if (typeof raw.statuses === "boolean") config.statuses = raw.statuses;
 }
 
 /** Load and validate config. Never throws: a bad file falls back to defaults. */
@@ -84,73 +109,31 @@ export async function loadConfig(pi: ExtensionAPI, ctx: ExtensionContext): Promi
 
 	for (const path of configPaths(ctx)) {
 		try {
-			const text = await readTextFile(path);
-			const parsed: unknown = JSON.parse(text);
-			if (!isRecord(parsed)) continue;
-
-			if (typeof parsed.enabled === "boolean") config.enabled = parsed.enabled;
-			if (typeof parsed.separator === "string") config.separator = parsed.separator.slice(0, 12);
-			if (typeof parsed.left === "boolean") config.left = parsed.left;
-			if (typeof parsed.right === "boolean") config.right = parsed.right;
-			if (typeof parsed.statuses === "boolean") config.statuses = parsed.statuses;
-			if (typeof parsed.nerd === "boolean") config.nerd = parsed.nerd;
-			if (
-				typeof parsed.refreshMs === "number" &&
-				Number.isFinite(parsed.refreshMs) &&
-				parsed.refreshMs >= 0
-			) {
-				config.refreshMs = Math.min(60_000, Math.floor(parsed.refreshMs));
-			}
-			if (
-				typeof parsed.preset === "string" &&
-				Object.hasOwn(PRESETS, parsed.preset)
-			) {
-				applyPreset(config, parsed.preset as Preset);
-			}
-			// Individual left/right/statuses keys win over the preset.
-			if (typeof parsed.left === "boolean") config.left = parsed.left;
-			if (typeof parsed.right === "boolean") config.right = parsed.right;
-			if (typeof parsed.statuses === "boolean") config.statuses = parsed.statuses;
+			const { readFile } = await import("node:fs/promises");
+			const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+			merge(config, parsed);
 			break;
 		} catch {
 			// Missing or malformed file: try the next path, then use defaults.
 		}
 	}
 
-	// settings.json is checked too, but a dedicated config file takes precedence.
-	// Ignore it when a custom PI_STATUSLINE_CONFIG path was supplied.
+	// settings.json is checked too; a dedicated config file takes precedence.
 	if (!process.env.PI_STATUSLINE_CONFIG?.trim()) {
 		try {
 			const settings = pi.getSettings() as SettingsLike | undefined;
-			const fromSettings = settings?.statusline;
-			if (isRecord(fromSettings)) {
-				if (typeof fromSettings.enabled === "boolean") config.enabled = fromSettings.enabled;
-				if (
-					typeof fromSettings.preset === "string" &&
-					Object.hasOwn(PRESETS, fromSettings.preset)
-				) {
-					applyPreset(config, fromSettings.preset as Preset);
-				}
-				if (typeof fromSettings.separator === "string") {
-					config.separator = fromSettings.separator.slice(0, 12);
-				}
-				if (typeof fromSettings.nerd === "boolean") config.nerd = fromSettings.nerd;
-			}
+			merge(config, settings?.statusline);
 		} catch {
-			// getSettings() is best-effort; defaults remain.
+			// getSettings() is best-effort.
 		}
 	}
 
 	if (process.env.PI_STATUSLINE_ENABLED === "0") config.enabled = false;
 	if (process.env.PI_STATUSLINE_ENABLED === "1") config.enabled = true;
+	if (process.env.PI_STATUSLINE_COLORS === "0") config.colors = false;
+	if (process.env.PI_STATUSLINE_COLORS === "1") config.colors = true;
 	const envPreset = process.env.PI_STATUSLINE_PRESET?.trim();
-	if (envPreset && Object.hasOwn(PRESETS, envPreset)) applyPreset(config, envPreset as Preset);
+	if (envPreset && isPreset(envPreset)) applyPreset(config, envPreset);
 
 	return config;
-}
-
-async function readTextFile(path: string): Promise<string> {
-	// Keep node:fs out of the module graph at load time for RPC/print-mode hosts.
-	const { readFile } = await import("node:fs/promises");
-	return readFile(path, "utf8");
 }

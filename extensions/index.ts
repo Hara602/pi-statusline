@@ -1,79 +1,146 @@
 /**
- * pi-statusline — a self-written, configurable Pi status line (footer).
+ * pi-statusline — Codex-style footer for the Pi coding agent.
  *
- * Load it as a local package:
+ * Always shows: session name, project path, model, reasoning level, agent run
+ * state, and Pi version. Optional extras: git branch, context, tokens, cost,
+ * clock, and other extensions' status texts.
+ *
+ * Install:
  *   pi -e /home/chr/pi-statusline
- *   pi install ./pi-statusline
+ *   pi install git:github.com/Hara602/pi-statusline
  *
  * Commands:
- *   /statusline [on|off|toggle|reload]   control the custom footer
- *   /statusline preset <name>            minimal | compact | full
- *
- * See README.md for configuration. TUI-only: setFooter() is a component
- * factory, so it does nothing outside interactive mode (docs/extensions.md).
+ *   /statusline [status|on|off|toggle|reload|preset <minimal|compact|full>]
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { DEFAULT_CONFIG, loadConfig, type Preset, type StatuslineConfig } from "./config.ts";
-import { createFooter } from "./render.ts";
-import type { StatusContext } from "./types.ts";
+import { VERSION, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { applyPreset, DEFAULT_CONFIG, isPreset, loadConfig, type StatuslineConfig } from "./config.ts";
+import { createFooter, invalidateFooter } from "./render.ts";
+import type { FooterComponent, RunState, StatusContext, TUI } from "./types.ts";
 
 const NAME = "pi-statusline";
 
-function toContext(ctx: ExtensionContext): StatusContext {
+function toContext(ctx: ExtensionContext, name: string | undefined): StatusContext {
 	return {
 		cwd: ctx.cwd,
 		mode: ctx.mode,
-		hasUI: ctx.hasUI,
 		model: ctx.model,
 		thinkingLevel: ctx.thinkingLevel,
+		sessionName: name,
+		piVersion: VERSION,
 		getContextUsage: () => ctx.getContextUsage(),
-		isIdle: () => ctx.isIdle(),
 		sessionManager: ctx.sessionManager,
 	};
 }
 
-function presetNames(): string[] {
-	return ["minimal", "compact", "full"];
-}
-
-function isPreset(value: string): value is Preset {
-	return presetNames().includes(value);
-}
-
 function describe(config: StatuslineConfig): string {
-	return `${config.enabled ? "on" : "off"}, preset=${config.preset}, left=${config.left}, right=${config.right}, statuses=${config.statuses}`;
+	return `${config.enabled ? "on" : "off"}, preset=${config.preset}, extras=${config.extras}, colors=${config.colors}, statuses=${config.statuses}`;
 }
 
 export default function (pi: ExtensionAPI) {
 	let config: StatuslineConfig = { ...DEFAULT_CONFIG };
 	let active = false;
+	let footer: FooterComponent | undefined;
+	let activeTui: TUI | undefined;
+
+	const run: RunState = { idle: true, waitingForUser: false, promptDepth: 0, changedAt: Date.now() };
+	let sessionName: string | undefined;
+	let contextSnapshot: StatusContext | undefined;
+
+	const refresh = (): void => {
+		if (!activeTui) return;
+		footer?.invalidate();
+		activeTui.requestRender();
+	};
 
 	const install = (ctx: ExtensionContext): void => {
 		if (ctx.mode !== "tui") return;
-		ctx.ui.setFooter((tui, theme, footerData) =>
-			createFooter({ config, context: toContext(ctx), footerData, theme, tui }),
-		);
+		contextSnapshot = toContext(ctx, sessionName);
+		ctx.ui.setFooter((tui, theme, footerData) => {
+			footer = createFooter({
+				config,
+				context: contextSnapshot!,
+				footerData,
+				theme,
+				tui,
+				run,
+			});
+			activeTui = tui;
+			return footer;
+		});
 		active = true;
 	};
 
 	const uninstall = (ctx: ExtensionContext): void => {
 		ctx.ui.setFooter(undefined);
+		footer = undefined;
+		activeTui = undefined;
 		active = false;
 	};
 
+	// --- required-field sources -------------------------------------------------
+
 	pi.on("session_start", async (_event, ctx) => {
 		config = await loadConfig(pi, ctx);
+		sessionName = ctx.sessionManager.getSessionName();
+		run.idle = ctx.isIdle();
 		if (config.enabled) install(ctx);
 		else uninstall(ctx);
+	});
+
+	pi.on("session_info_changed", async (event) => {
+		sessionName = event.name;
+		if (contextSnapshot) contextSnapshot.sessionName = sessionName;
+		refresh();
+	});
+
+	pi.on("model_select", async (event, ctx) => {
+		if (contextSnapshot) {
+			contextSnapshot.model = ctx.model ?? event.model;
+			contextSnapshot.thinkingLevel = ctx.thinkingLevel;
+		}
+		refresh();
+	});
+
+	pi.on("thinking_level_select", async (event) => {
+		if (contextSnapshot) contextSnapshot.thinkingLevel = event.level;
+		refresh();
+	});
+
+	// --- agent run state --------------------------------------------------------
+
+	pi.on("agent_start", async () => {
+		run.idle = false;
+		run.changedAt = Date.now();
+		refresh();
+	});
+
+	pi.on("agent_settled", async () => {
+		run.idle = true;
+		run.changedAt = Date.now();
+		refresh();
+	});
+
+	pi.on("ui_prompt_start", async () => {
+		run.promptDepth += 1;
+		run.waitingForUser = true;
+		refresh();
+	});
+
+	pi.on("ui_prompt_end", async () => {
+		run.promptDepth = Math.max(0, run.promptDepth - 1);
+		run.waitingForUser = run.promptDepth > 0;
+		refresh();
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
 		if (active) uninstall(ctx);
 	});
 
+	// --- command ----------------------------------------------------------------
+
 	pi.registerCommand("statusline", {
-		description: "Configure pi-statusline: on|off|toggle|reload|preset <minimal|compact|full>",
+		description: "Codex-style statusline: status|on|off|toggle|reload|preset <minimal|compact|full>",
 		handler: async (args, ctx) => {
 			if (ctx.mode !== "tui") {
 				ctx.ui.notify("/statusline needs interactive TUI mode", "warning");
@@ -81,7 +148,6 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const [command, value] = args.trim().split(/\s+/, 2);
-
 			switch (command) {
 				case "":
 				case undefined:
@@ -112,22 +178,16 @@ export default function (pi: ExtensionAPI) {
 					return;
 				case "preset": {
 					if (!value || !isPreset(value)) {
-						ctx.ui.notify(`Usage: /statusline preset <${presetNames().join("|")}>`, "warning");
+						ctx.ui.notify("Usage: /statusline preset <minimal|compact|full>", "warning");
 						return;
 					}
-					config.preset = value;
-					const groups: Record<Preset, [boolean, boolean, boolean]> = {
-						minimal: [true, false, false],
-						compact: [true, true, false],
-						full: [true, true, true],
-					};
-					[config.left, config.right, config.statuses] = groups[value];
+					applyPreset(config, value);
 					if (active) install(ctx);
 					ctx.ui.notify(`${NAME}: ${describe(config)}`, "info");
 					return;
 				}
 				default:
-					ctx.ui.notify("Usage: /statusline [on|off|toggle|reload|preset <name>]", "warning");
+					ctx.ui.notify("Usage: /statusline [status|on|off|toggle|reload|preset <name>]", "warning");
 			}
 		},
 	});

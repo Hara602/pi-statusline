@@ -20,5 +20,5 @@
 			]
 		}
 	},
-	"include": ["extensions/**/*.ts"]
+	"include": ["extensions/**/*.ts", "scripts/**/*.ts"]
 }

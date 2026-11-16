@@ -1,7 +1,7 @@
 {
 	"name": "pi-statusline",
-	"version": "0.1.0",
-	"description": "A configurable, self-written status line (footer) extension for the Pi coding agent",
+	"version": "0.2.0",
+	"description": "A Codex-style status line (footer) for the Pi coding agent: session, cwd, model, reasoning, run state and version",
 	"type": "module",
 	"private": true,
 	"keywords": [
@@ -9,7 +9,8 @@
 		"pi-extension",
 		"statusline",
 		"footer",
-		"tui"
+		"tui",
+		"codex"
 	],
 	"license": "MIT",
 	"pi": {

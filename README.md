@@ -1,54 +1,91 @@
 # pi-statusline
 
-一个自己写的 [Pi](https://pi.dev) statusline / footer 扩展。用 `ctx.ui.setFooter()` 整条替换内置 footer，左侧显示目录与 git 分支，右侧显示模型、上下文、token、费用、时间和工作状态。
+一个仿 **Codex CLI** 底部状态栏风格的 [Pi](https://pi.dev) 扩展。用 `ctx.ui.setFooter()` 整条替换内置 footer，单行显示，`" · "` 分隔，按类别着色，窄屏自动省略。
 
-仅 TUI 模式生效（`print` / `rpc` / `json` 下组件工厂会被忽略）。
+**必须显示的六项（任何配置、任何终端宽度下都不会被关闭）：**
+
+| 项目 | 来源 | 示例 |
+| --- | --- | --- |
+| 当前会话名称 | `sessionManager.getSessionName()` + `session_info_changed` | `beautify-tui` |
+| 当前项目路径 | `ctx.cwd`（HOME 缩写为 `~`） | `~/pi-statusline` |
+| 模型名 | `ctx.model` + `model_select` | `remote-magpie/zenmux/tencent/hy4` |
+| 模型推理强度 | `ctx.thinkingLevel` + `thinking_level_select` | `reasoning:max` |
+| agent 运行状态 | `agent_start` / `agent_settled` / `ui_prompt_*` | `⠋ Working` / `Ready` / `Waiting for input` |
+| Pi 版本号 | 从 `@earendil-works/pi-coding-agent` 导入 `VERSION` | `pi v1.5.2` |
+
+未用 `/name` 命名会话时显示 `untitled`。可选附加项：git 分支、context 百分比、token、费用、时钟、其他扩展的 `setStatus()` 文本。
+
+宽屏效果（纯文本示意）：
+
+```text
+beautify-tui · ~/pi-statusline · remote-magpie/zenmux/tencent/hy4 · reasoning:max · ⠋ Working · pi v1.5.2 · main · context:5% · ↑1.2k ↓300 · $0.012 · 21:00
+```
+
+窄屏时先隐藏可选项、再把最长的必显值加省略号，另外在极窄终端把分隔符从 `" · "` 收紧为 `"·"`：
+
+```text
+beauti… · ~/pi-s… · remote… · reasoni… · ⠋ Worki… · pi v1.5…
+```
+
+## 设计参照
+
+Codex CLI 的 `codex-rs/tui/src/bottom_pane/status_line*.rs`：
+
+- 单行、底部状态栏、muted `" · "` 分隔符
+- 按类别着色：模型/状态/元数据 cyan，路径/用量 green，分支/线程 magenta
+- 逐项省略与截断；默认信息含 model+reasoning、cwd、thread name、run state、version
+
+Pi 主题没有 Codex 的 `status-model` 等语义色，本扩展用 Pi 的 `accent` / `success` / `warning` / `dim` 语义 token 代替，会随用户主题明暗自适应。可用 `"colors": false` 或 `PI_STATUSLINE_COLORS=0` 退回全部 dim 单色。
 
 ## 项目结构
 
 ```
 pi-statusline/
-├── package.json              # Pi package 清单：pi.extensions -> extensions/index.ts
-├── tsconfig.json             # 指向本机 Pi 1.5.2 类型做类型检查
+├── package.json              # Pi package：pi.extensions -> extensions/index.ts
+├── tsconfig.json             # 指向本机 Pi 类型声明
 ├── extensions/
-│   ├── index.ts              # 扩展入口：事件、/statusline 命令、安装 footer
-│   ├── config.ts             # settings.json / JSON 文件 / 环境变量配置
-│   ├── segments.ts           # 各信息段的纯函数，方便增删
-│   ├── render.ts             # footer Component，宽度/主题/刷新处理
+│   ├── index.ts              # 入口：事件订阅、/statusline 命令
+│   ├── config.ts             # settings.json / JSON / 环境变量配置
+│   ├── segments.ts           # 必显 6 项 + 可选项，纯文本生成
+│   ├── render.ts             # footer Component：着色、自适应宽度、生命周期
 │   └── types.ts              # 共享类型
-├── scripts/check.mjs         # 无依赖的结构自检
-├── example.statusline.json   # 配置示例
+├── scripts/check.mjs         # 无依赖自检 + 四种宽度必显项验证
+├── example.statusline.json   # 完整配置示例
 └── LICENSE
 ```
 
-## 运行
-
-临时试用（不写入 Pi 配置）：
+## 安装
 
 ```bash
+pi install git:github.com/Hara602/pi-statusline
+# 或开发时用本地目录
+pi install ./pi-statusline
+# 或临时试用
 pi -e /home/chr/pi-statusline
 ```
 
-作为本地包安装（写入 `~/.pi/agent/settings.json` 的 `packages`）：
-
-```bash
-pi install ./pi-statusline
-```
-
-也可以不安装，直接把 `extensions/index.ts` 所在目录链接到 `~/.pi/agent/extensions/pi-statusline/`；改代码后用 `/reload` 热加载。
+装完在 TUI 里 `/reload`；**仅 TUI 模式生效**（`--print` / `--mode rpc` / `--mode json` 下组件工厂不渲染）。
 
 ## 命令
 
 ```
-/statusline                     查看当前状态
-/statusline on | off | toggle   启用 / 恢复内置 footer / 切换
-/statusline reload              重新读取配置
+/statusline                      查看当前状态
+/statusline on | off | toggle    启用 / 恢复内置 footer / 切换
+/statusline reload               重新读取配置
 /statusline preset minimal|compact|full
 ```
 
+预设只控制**可选项**，六项必显信息始终存在：
+
+| preset | extras | statuses |
+| --- | --- | --- |
+| `minimal` | 关 | 关 |
+| `compact` | 开 | 关 |
+| `full` | 开 | 开 |
+
 ## 配置
 
-优先级从低到高：内置默认值 → `settings.json` → 专用 JSON 文件 → 环境变量。
+优先级：默认值 → `settings.json` → 专用 JSON 文件 → 环境变量。
 
 ### `~/.pi/agent/settings.json`
 
@@ -65,7 +102,7 @@ pi install ./pi-statusline
 
 按顺序查找，找到第一个就停止：
 
-1. `$PI_STATUSLINE_CONFIG`（绝对路径，或相对当前工作目录）
+1. `$PI_STATUSLINE_CONFIG`
 2. `~/.pi/agent/extensions/pi-statusline.json`
 3. `~/.pi/agent/pi-statusline.json`
 
@@ -75,12 +112,12 @@ pi install ./pi-statusline
 {
   "enabled": true,
   "preset": "full",
-  "separator": " │ ",
-  "left": true,
-  "right": true,
+  "separator": " · ",
+  "extras": true,
   "statuses": true,
   "nerd": false,
-  "refreshMs": 1000
+  "colors": true,
+  "refreshMs": 250
 }
 ```
 
@@ -88,11 +125,12 @@ pi install ./pi-statusline
 | --- | --- | --- |
 | `enabled` | `true` | session_start 时是否安装自定义 footer |
 | `preset` | `compact` | `minimal` / `compact` / `full` |
-| `separator` | `" │ "` | 段间分隔符 |
-| `left` / `right` | `true` | 是否显示左右两组 |
-| `statuses` | `false` | 第二行显示其他扩展用 `ctx.ui.setStatus()` 设置的状态 |
-| `nerd` | `false` | true 时使用 Nerd Font 字形 |
-| `refreshMs` | `1000` | 时钟/工作状态刷新间隔；`0` 关闭定时器 |
+| `separator` | `" · "` | 项间分隔符 |
+| `extras` | `true` | 显示 git/context/tokens/cost/clock |
+| `statuses` | `false` | 第二行显示其他扩展的 `setStatus()` |
+| `nerd` | `false` | Nerd Font git 图标 |
+| `colors` | `true` | Codex 风格分类着色；false 为单色 dim |
+| `refreshMs` | `250` | spinner/时钟刷新间隔；`0` 关闭定时器 |
 
 环境变量：
 
@@ -100,27 +138,22 @@ pi install ./pi-statusline
 PI_STATUSLINE_CONFIG=/path/to/config.json
 PI_STATUSLINE_ENABLED=0|1
 PI_STATUSLINE_PRESET=minimal|compact|full
+PI_STATUSLINE_COLORS=0|1
 ```
 
-`PI_CODING_AGENT_DIR` / `HOME` 决定 agent 目录；找不到配置文件就用默认值，不会报错。
+配置文件缺失或格式错误时静默回退默认值，不影响 Pi 启动。
 
 ## 自定义
 
-在 `extensions/segments.ts` 的 `SEGMENTS` 数组里加一项即可：
+在 `extensions/segments.ts` 的 `buildItems()` 里加可选项：
 
 ```ts
-{
-  id: "hostname",
-  label: "machine name",
-  render: () => process.env.HOSTNAME ?? undefined,
-}
+push("hostname", "metadata", process.env.HOSTNAME);
 ```
 
-再把 id 加进 `groupsFor()` 的 `left` 或 `right`。`render()` 返回 `undefined` 时该段自动隐藏。段函数只返回纯文本，颜色统一在 `render.ts` 里用 `theme.fg()` 加，主题切换时不会残留旧 ANSI 色。
+`REQUIRED_ITEMS` 里的六项不要删除——`assertRequired()` 会在渲染时检查，缺任意一项会抛错。段函数只返回纯文本，所有着色在 `render.ts` 用 `theme.fg()` 完成，主题切换时不会残留旧 ANSI 色。
 
-## 类型检查
-
-先安装 devDependency，然后：
+## 开发验证
 
 ```bash
 cd /home/chr/pi-statusline
@@ -129,13 +162,15 @@ npm run typecheck
 npm run check
 ```
 
-`tsconfig.json` 目前用绝对路径指向本机 Pi 1.5.2 安装目录的类型声明；换机器或升级 Pi 后，把 `paths` 改成对应的 `dist/index.d.ts` 位置，或改用 npm 上发布的包类型。
+`npm run check` 会用 Pi 自带的 jiti 实际加载扩展，在 200 / 100 / 60 / 30 列宽度下验证六项必显字段都在、且行不超宽。
+
+`tsconfig.json` 目前用绝对路径指向本机 Pi 1.5.2 安装目录的类型声明；换机器或升级 Pi 后，把 `paths` 改成对应 `dist/index.d.ts` 位置，或改用已发布的类型包。
 
 ## 实现要点
 
-- `ctx.ui.setFooter(factory)` 整条替换内置 footer；`setFooter(undefined)` 恢复。
-- `footerData.getGitBranch()` / `getExtensionStatuses()` / `onBranchChange()` 提供 git 与扩展状态。
-- 每段 `render(width)` 都用 `visibleWidth()` + `truncateToWidth()` 保证不超宽。
-- `invalidate()` 清渲染缓存；`dispose()` 清定时器并退订分支监听。
-- 状态变化调用 `tui.requestRender()`。
-- 参考：`docs/extensions.md`「Widgets, Status, and Footer」、`docs/tui.md`、`examples/extensions/custom-footer.ts`、`examples/extensions/status-line.ts`。
+- `ctx.ui.setFooter(factory)` 整条替换；`setFooter(undefined)` 恢复内置 footer。
+- `footerData.getGitBranch()` / `getExtensionStatuses()` / `onBranchChange()`。
+- `visibleWidth()` / `truncateToWidth()` / `stripTerminalSequences()` 处理宽度与 ANSI。
+- `invalidate()` 清缓存，`dispose()` 清定时器并退订分支监听。
+- 事件变化调用 `tui.requestRender()`；`agent_settled` 是「真正空闲」的最终信号。
+- 参考：`docs/extensions.md`、`docs/tui.md`、`examples/extensions/custom-footer.ts`。

@@ -1,26 +1,44 @@
 /**
- * Segments: pure functions from state to plain text.
- * Styling is applied once in render.ts, so a segment never embeds ANSI codes.
+ * Codex-style status line items.
+ *
+ * Codex's statusline (codex-rs/tui/src/bottom_pane) uses a single row, a
+ * muted " · " separator, per-category colors and ellipsis truncation. The six
+ * REQUIRED_ITEMS below mirror its default model+reasoning / cwd / thread name
+ * / run-state / version information and are always rendered.
+ *
+ * Segment functions return plain text only; render.ts owns all ANSI styling.
  */
 
 import { basename } from "node:path";
 import type { StatuslineConfig } from "./config.ts";
-import type { StatusContext } from "./types.ts";
+import type { RenderState, RunState, StatusContext } from "./types.ts";
 
-export interface Segment {
+export type Accent = "model" | "path" | "branch" | "state" | "usage" | "metadata" | "thread";
+
+export interface Item {
 	id: string;
-	label: string;
-	render(state: SegmentState): string | undefined;
+	accent: Accent;
+	text: string;
 }
 
 export interface SegmentState {
 	config: StatuslineConfig;
 	context: StatusContext;
+	run: RunState;
 	branch: string | null;
 	statuses: ReadonlyMap<string, string>;
 	now: Date;
-	working: boolean;
 }
+
+/** These six must always be present. */
+export const REQUIRED_ITEMS = [
+	"session",
+	"cwd",
+	"model",
+	"reasoning",
+	"state",
+	"version",
+] as const;
 
 export function shortenPath(path: string): string {
 	const home = process.env.HOME;
@@ -41,9 +59,7 @@ function usageOf(message: { usage?: unknown } | undefined): { input?: number; ou
 	if (!message || typeof message.usage !== "object" || message.usage === null) return undefined;
 	const u = message.usage as Record<string, unknown>;
 	const cost = u.cost;
-	const costTotal = typeof cost === "object" && cost !== null
-		? (cost as Record<string, unknown>).total
-		: undefined;
+	const costTotal = typeof cost === "object" && cost !== null ? (cost as Record<string, unknown>).total : undefined;
 	return {
 		input: typeof u.input === "number" ? u.input : undefined,
 		output: typeof u.output === "number" ? u.output : undefined,
@@ -65,78 +81,78 @@ export function totals(state: SegmentState): { input: number; output: number; co
 	return { input, output, cost };
 }
 
-export const SEGMENTS: Segment[] = [
-	{
-		id: "cwd",
-		label: "working directory",
-		render: ({ context }) => shortenPath(context.cwd) || basename(context.cwd),
-	},
-	{
-		id: "git",
-		label: "git branch",
-		render: ({ branch, config }) => {
-			if (!branch) return undefined;
-			const glyph = config.nerd ? "\ue0a0 " : "";
-			return `${glyph}${branch}`;
-		},
-	},
-	{
-		id: "model",
-		label: "model",
-		render: ({ context }) => context.model?.id ?? "no-model",
-	},
-	{
-		id: "thinking",
-		label: "thinking level",
-		render: ({ context }) => context.thinkingLevel ?? undefined,
-	},
-	{
-		id: "context",
-		label: "context usage",
-		render: ({ context }) => {
-			const usage = context.getContextUsage();
-			const window = usage?.contextWindow ?? context.model?.contextWindow;
-			if (!usage || usage.percent === null || !window) return undefined;
-			return `ctx ${Math.round(usage.percent)}%/${formatCount(window)}`;
-		},
-	},
-	{
-		id: "tokens",
-		label: "session tokens",
-		render: (state) => {
-			const { input, output } = totals(state);
-			return `↑${formatCount(input)} ↓${formatCount(output)}`;
-		},
-	},
-	{
-		id: "cost",
-		label: "session cost",
-		render: (state) => `$${totals(state).cost.toFixed(3)}`,
-	},
-	{
-		id: "clock",
-		label: "local time",
-		render: ({ now }) => now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }),
-	},
-	{
-		id: "state",
-		label: "working / idle",
-		render: ({ working, config }) => {
-			if (working) return config.nerd ? "● working" : "* working";
-			return config.nerd ? "✓ idle" : "idle";
-		},
-	},
-];
+/** Fallback when `/name` has not been used: a short session id. */
+function shortSessionName(context: StatusContext): string {
+	const explicit = context.sessionName?.trim();
+	if (explicit) return explicit;
+	return "untitled";
+}
 
-export const SEGMENT_IDS = SEGMENTS.map((segment) => segment.id);
+const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-/** Default left/right groups per preset. */
-export function groupsFor(config: StatuslineConfig): { left: string[]; right: string[] } {
-	const left = ["cwd", "git"];
-	const right = config.preset === "minimal"
-		? ["model"]
-		: config.preset === "compact"
-			? ["model", "context", "tokens", "state"]
-			: ["model", "thinking", "context", "tokens", "cost", "clock", "state"];
-	return { left, right };
+function runStateText(state: SegmentState): string {
+	if (state.run.waitingForUser) return "Waiting for input";
+	if (state.run.idle) return "Ready";
+	const frame = SPINNER[Math.floor(state.now.getTime() / 120) % SPINNER.length];
+	return `${frame} Working`;
+}
+
+/** Build all items in display order. Required items never return undefined. */
+export function buildItems(state: SegmentState): Item[] {
+	const { context, config } = state;
+	const items: Item[] = [
+		{ id: "session", accent: "thread", text: shortSessionName(context) },
+		{ id: "cwd", accent: "path", text: shortenPath(context.cwd) || basename(context.cwd) },
+		{
+			id: "model",
+			accent: "model",
+			text: context.model?.id ?? "no-model",
+		},
+		{
+			id: "reasoning",
+			accent: "model",
+			text: context.thinkingLevel ? `reasoning:${context.thinkingLevel}` : "reasoning:off",
+		},
+		{ id: "state", accent: "state", text: runStateText(state) },
+		{ id: "version", accent: "metadata", text: `pi v${context.piVersion}` },
+	];
+
+	if (!config.extras) return items;
+
+	const push = (id: string, accent: Accent, text: string | undefined): void => {
+		if (text) items.push({ id, accent, text });
+	};
+
+	if (state.branch) {
+		push("git", "branch", `${config.nerd ? "\ue0a0 " : ""}${state.branch}`);
+	}
+	const usage = context.getContextUsage();
+	if (usage?.percent !== null && usage?.percent !== undefined) {
+		push("context", "usage", `context:${Math.round(usage.percent)}%`);
+	}
+	const { input, output, cost } = totals(state);
+	if (input > 0 || output > 0) {
+		push("tokens", "usage", `↑${formatCount(input)} ↓${formatCount(output)}`);
+	}
+	if (cost > 0) push("cost", "usage", `$${cost.toFixed(3)}`);
+	push("clock", "metadata", state.now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }));
+	return items;
+}
+
+/** Required items plus the ids of any optional extras that were rendered. */
+export function assertRequired(items: Item[]): void {
+	const present = new Set(items.map((item) => item.id));
+	const missing = REQUIRED_ITEMS.filter((id) => !present.has(id));
+	if (missing.length > 0) throw new Error(`pi-statusline: missing required items: ${missing.join(", ")}`);
+}
+
+export function stateFrom(render: RenderState, footerData: RenderState["footerData"]): SegmentState {
+	return {
+		config: render.config,
+		context: render.context,
+		run: render.run,
+		branch: footerData.getGitBranch(),
+		statuses: footerData.getExtensionStatuses(),
+		now: new Date(),
+	};
 }
