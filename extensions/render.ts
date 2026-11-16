@@ -11,7 +11,7 @@
 
 import { stripTerminalSequences, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { Accent, Item } from "./segments.ts";
-import { assertRequired, buildItems, REQUIRED_ITEMS, stateFrom } from "./segments.ts";
+import { appendCost, assertRequired, buildItems, REQUIRED_ITEMS, stateFrom } from "./segments.ts";
 import type { FooterComponent, RenderState, Theme } from "./types.ts";
 
 /** Codex's StatusLineAccent fallbacks: cyan / green / magenta. */
@@ -105,6 +105,7 @@ export function createFooter(render: RenderState): FooterComponent {
 	const build = (width: number): string[] => {
 		const state = stateFrom(render, footerData);
 		const items = buildItems(state);
+		appendCost(items, state);
 		const lines: string[] = [fitItems(theme, items, config, width)];
 
 		if (config.statuses) {

@@ -2,8 +2,8 @@
  * pi-statusline — Codex-style footer for the Pi coding agent.
  *
  * Always shows: session name, project path, model, reasoning level, agent run
- * state, and Pi version. Optional extras: git branch, context, tokens, cost,
- * and other extensions' status texts. No clock is shown.
+ * state, and Pi version. Optional extras: git branch, context, tokens, and
+ * other extensions' status texts. Cost is opt-in. No clock is shown.
  *
  * Install:
  *   pi -e /home/chr/pi-statusline

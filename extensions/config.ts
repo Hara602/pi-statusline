@@ -4,7 +4,8 @@
  * Six fields are always shown and cannot be disabled:
  *   session name · project path · model · reasoning · run state · pi version
  *
- * Optional extras (git branch, context, tokens, cost) can be layered on.
+ * Optional extras (git branch, context, tokens) can be layered on. Cost is
+ * hidden by default and can be re-enabled with `showCost: true`.
  * There is deliberately no clock: the status line shows durable session state.
  * Configuration is read at startup and on `/statusline reload`.
  *
@@ -13,6 +14,7 @@
  *   PI_STATUSLINE_ENABLED=0|1
  *   PI_STATUSLINE_PRESET=minimal|compact|full
  *   PI_STATUSLINE_COLORS=0|1
+ *   PI_STATUSLINE_COST=0|1
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -28,8 +30,10 @@ export interface StatuslineConfig {
 	preset: Preset;
 	/** Separator between items (Codex uses " · "). */
 	separator: string;
-	/** Show optional extras: git branch, context, tokens, cost. */
+	/** Show optional extras: git branch, context, tokens. */
 	extras: boolean;
+	/** Show the estimated session cost. Off by default; independent of `extras`/preset. */
+	showCost: boolean;
 	/** Show a second line with other extensions' ctx.ui.setStatus() values. */
 	statuses: boolean;
 	/** Use Nerd Font glyphs where available. */
@@ -45,6 +49,7 @@ export const DEFAULT_CONFIG: StatuslineConfig = {
 	preset: "compact",
 	separator: " · ",
 	extras: true,
+	showCost: false,
 	statuses: false,
 	nerd: false,
 	colors: true,
@@ -92,6 +97,7 @@ function merge(config: StatuslineConfig, raw: unknown): void {
 	if (typeof raw.enabled === "boolean") config.enabled = raw.enabled;
 	if (typeof raw.separator === "string") config.separator = raw.separator.slice(0, 12);
 	if (typeof raw.extras === "boolean") config.extras = raw.extras;
+	if (typeof raw.showCost === "boolean") config.showCost = raw.showCost;
 	if (typeof raw.statuses === "boolean") config.statuses = raw.statuses;
 	if (typeof raw.nerd === "boolean") config.nerd = raw.nerd;
 	if (typeof raw.colors === "boolean") config.colors = raw.colors;
@@ -133,6 +139,8 @@ export async function loadConfig(pi: ExtensionAPI, ctx: ExtensionContext): Promi
 	if (process.env.PI_STATUSLINE_ENABLED === "1") config.enabled = true;
 	if (process.env.PI_STATUSLINE_COLORS === "0") config.colors = false;
 	if (process.env.PI_STATUSLINE_COLORS === "1") config.colors = true;
+	if (process.env.PI_STATUSLINE_COST === "0") config.showCost = false;
+	if (process.env.PI_STATUSLINE_COST === "1") config.showCost = true;
 	const envPreset = process.env.PI_STATUSLINE_PRESET?.trim();
 	if (envPreset && isPreset(envPreset)) applyPreset(config, envPreset);
 

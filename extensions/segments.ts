@@ -7,6 +7,7 @@
  * / run-state / version information and are always rendered.
  *
  * Segment functions return plain text only; render.ts owns all ANSI styling.
+ * The estimated session cost is hidden unless `showCost` is enabled.
  */
 
 import { basename } from "node:path";
@@ -155,12 +156,18 @@ export function buildItems(state: SegmentState): Item[] {
 	if (usage?.percent !== null && usage?.percent !== undefined) {
 		push("context", "usage", `context:${Math.round(usage.percent)}%`);
 	}
-	const { input, output, cost } = totals(state);
+	const { input, output } = totals(state);
 	if (input > 0 || output > 0) {
 		push("tokens", "usage", `↑${formatCount(input)} ↓${formatCount(output)}`);
 	}
-	if (cost > 0) push("cost", "usage", `$${cost.toFixed(3)}`);
 	return items;
+}
+
+/** Cost is opt-in: it is appended only when `showCost` is explicitly enabled. */
+export function appendCost(items: Item[], state: SegmentState): void {
+	if (!state.config.showCost) return;
+	const { cost } = totals(state);
+	if (cost > 0) items.push({ id: "cost", accent: "usage", text: `$${cost.toFixed(3)}` });
 }
 
 /** Required items plus the ids of any optional extras that were rendered. */

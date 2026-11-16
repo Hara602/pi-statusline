@@ -101,6 +101,8 @@ for (const width of [200, 100, 60, 30]) {
 	if (visible.length > width) fail(`line exceeds width ${width}: ${visible.length}`);
 	if (!/搜索|搜…|…/.test(visible)) fail(`session name missing at width ${width}`);
 	if (/\d{1,2}:\d{2}/.test(visible)) fail(`clock still present at width ${width}`);
+	if (/\$\d/.test(visible)) fail(`cost should be hidden by default at width ${width}`);
+	if (width >= 200 && !/↑/.test(visible)) fail(`token counts missing at width ${width}`);
 	for (const id of REQUIRED_ITEMS) {
 		if (id === "state") {
 			if (!/Work|Ready|Wait|⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏/.test(first)) fail(`missing run state at width ${width}`);
@@ -125,6 +127,22 @@ for (const width of [200, 100, 60, 30]) {
 		}
 	}
 	console.log(`check: width=${width} -> ${JSON.stringify(first)}`);
+	footer.dispose?.();
+}
+
+// Opt-in cost: keep one test that confirms `showCost: true` brings it back.
+{
+	const footer = createFooter({
+		config: { ...DEFAULT_CONFIG, showCost: true },
+		context,
+		footerData,
+		theme: plainTheme,
+		tui,
+		run,
+	});
+	const line = footer.render(200)[0] ?? "";
+	if (!/\$0\.012/.test(line)) fail("showCost: true did not render the cost item");
+	console.log(`check: showCost=true -> ${JSON.stringify(line)}`);
 	footer.dispose?.();
 }
 

@@ -3,6 +3,7 @@
   "preset": "full",
   "separator": " · ",
   "extras": true,
+  "showCost": false,
   "statuses": true,
   "nerd": false,
   "colors": true,

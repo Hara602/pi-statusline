@@ -13,12 +13,12 @@
 | agent 运行状态 | `agent_start` / `agent_settled` / `ui_prompt_*` | `⠋ Working` / `Ready` / `Waiting for input` |
 | Pi 版本号 | 从 `@earendil-works/pi-coding-agent` 导入 `VERSION` | `pi v1.5.2` |
 
-**没有时钟**：状态栏只展示会话持久状态，不显示时间。未用 `/name` 命名会话时，自动用第一条用户消息作标题（和 `/resume` 会话选择器一致）；极端情况下（还没有任何用户消息）显示 `session <id前8位>`。可选附加项：git 分支、context 百分比、token、费用、其他扩展的 `setStatus()` 文本。
+**没有时钟、默认不显示费用**：状态栏只展示会话持久状态。未用 `/name` 命名会话时，自动用第一条用户消息作标题（和 `/resume` 会话选择器一致）；极端情况下（还没有任何用户消息）显示 `session <id前8位>`。可选附加项：git 分支、context 百分比、token、其他扩展的 `setStatus()` 文本。费用需显式开启 `showCost: true`。
 
 宽屏效果（纯文本示意）：
 
 ```text
-搜索关于pi的插件，比如如何自定义状态栏 · ~/pi-statusline · remote-magpie/zenmux/tencent/hy4 · reasoning:max · ⠋ Working · pi v1.5.2 · main · context:5% · ↑1.2k ↓300 · $0.012
+搜索关于pi的插件，比如如何自定义状态栏 · ~/pi-statusline · remote-magpie/zenmux/tencent/hy4 · reasoning:max · ⠋ Working · pi v1.5.2 · main · context:5% · ↑1.2k ↓300
 ```
 
 窄屏时先隐藏可选项、再把最长的必显值加省略号，另外在极窄终端把分隔符从 `" · "` 收紧为 `"·"`：
@@ -115,6 +115,7 @@ pi -e /home/chr/pi-statusline
   "separator": " · ",
   "extras": true,
   "statuses": true,
+  "showCost": false,
   "nerd": false,
   "colors": true,
   "refreshMs": 250
@@ -126,7 +127,8 @@ pi -e /home/chr/pi-statusline
 | `enabled` | `true` | session_start 时是否安装自定义 footer |
 | `preset` | `compact` | `minimal` / `compact` / `full` |
 | `separator` | `" · "` | 项间分隔符 |
-| `extras` | `true` | 显示 git/context/tokens/cost（无时钟） |
+| `extras` | `true` | 显示 git/context/tokens（无时钟、无费用） |
+| `showCost` | `false` | 单独开启估算费用 `$0.012`；不受 preset / `extras` 影响 |
 | `statuses` | `false` | 第二行显示其他扩展的 `setStatus()` |
 | `nerd` | `false` | Nerd Font git 图标 |
 | `colors` | `true` | Codex 风格分类着色；false 为单色 dim |
@@ -139,6 +141,7 @@ PI_STATUSLINE_CONFIG=/path/to/config.json
 PI_STATUSLINE_ENABLED=0|1
 PI_STATUSLINE_PRESET=minimal|compact|full
 PI_STATUSLINE_COLORS=0|1
+PI_STATUSLINE_COST=0|1
 ```
 
 配置文件缺失或格式错误时静默回退默认值，不影响 Pi 启动。
