@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "preset": "full",
+  "separator": " │ ",
+  "left": true,
+  "right": true,
+  "statuses": true,
+  "nerd": false,
+  "refreshMs": 1000
+}
