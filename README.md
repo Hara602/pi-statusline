@@ -6,25 +6,25 @@
 
 | 项目 | 来源 | 示例 |
 | --- | --- | --- |
-| 当前会话名称 | `sessionManager.getSessionName()` + `session_info_changed` | `beautify-tui` |
+| 当前会话名称 | `/name` 优先；未命名时取首条用户消息（与 Pi 会话选择器一致）；再回退短 session id | `搜索关于pi的插件，比如如何自定义状态栏` |
 | 当前项目路径 | `ctx.cwd`（HOME 缩写为 `~`） | `~/pi-statusline` |
 | 模型名 | `ctx.model` + `model_select` | `remote-magpie/zenmux/tencent/hy4` |
 | 模型推理强度 | `ctx.thinkingLevel` + `thinking_level_select` | `reasoning:max` |
 | agent 运行状态 | `agent_start` / `agent_settled` / `ui_prompt_*` | `⠋ Working` / `Ready` / `Waiting for input` |
 | Pi 版本号 | 从 `@earendil-works/pi-coding-agent` 导入 `VERSION` | `pi v1.5.2` |
 
-未用 `/name` 命名会话时显示 `untitled`。可选附加项：git 分支、context 百分比、token、费用、时钟、其他扩展的 `setStatus()` 文本。
+**没有时钟**：状态栏只展示会话持久状态，不显示时间。未用 `/name` 命名会话时，自动用第一条用户消息作标题（和 `/resume` 会话选择器一致）；极端情况下（还没有任何用户消息）显示 `session <id前8位>`。可选附加项：git 分支、context 百分比、token、费用、其他扩展的 `setStatus()` 文本。
 
 宽屏效果（纯文本示意）：
 
 ```text
-beautify-tui · ~/pi-statusline · remote-magpie/zenmux/tencent/hy4 · reasoning:max · ⠋ Working · pi v1.5.2 · main · context:5% · ↑1.2k ↓300 · $0.012 · 21:00
+搜索关于pi的插件，比如如何自定义状态栏 · ~/pi-statusline · remote-magpie/zenmux/tencent/hy4 · reasoning:max · ⠋ Working · pi v1.5.2 · main · context:5% · ↑1.2k ↓300 · $0.012
 ```
 
 窄屏时先隐藏可选项、再把最长的必显值加省略号，另外在极窄终端把分隔符从 `" · "` 收紧为 `"·"`：
 
 ```text
-beauti… · ~/pi-s… · remote… · reasoni… · ⠋ Worki… · pi v1.5…
+搜索关… · ~/pi-s… · remote… · reasoni… · ⠋ Worki… · pi v1.5…
 ```
 
 ## 设计参照
@@ -126,11 +126,11 @@ pi -e /home/chr/pi-statusline
 | `enabled` | `true` | session_start 时是否安装自定义 footer |
 | `preset` | `compact` | `minimal` / `compact` / `full` |
 | `separator` | `" · "` | 项间分隔符 |
-| `extras` | `true` | 显示 git/context/tokens/cost/clock |
+| `extras` | `true` | 显示 git/context/tokens/cost（无时钟） |
 | `statuses` | `false` | 第二行显示其他扩展的 `setStatus()` |
 | `nerd` | `false` | Nerd Font git 图标 |
 | `colors` | `true` | Codex 风格分类着色；false 为单色 dim |
-| `refreshMs` | `250` | spinner/时钟刷新间隔；`0` 关闭定时器 |
+| `refreshMs` | `250` | spinner 动画刷新间隔；`0` 关闭定时器 |
 
 环境变量：
 

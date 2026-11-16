@@ -81,11 +81,36 @@ export function totals(state: SegmentState): { input: number; output: number; co
 	return { input, output, cost };
 }
 
-/** Fallback when `/name` has not been used: a short session id. */
-function shortSessionName(context: StatusContext): string {
-	const explicit = context.sessionName?.trim();
+/** Extract a one-line label from a user message, like Pi's session picker does. */
+function firstUserText(content: unknown): string | undefined {
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return undefined;
+	for (const part of content) {
+		if (part && typeof part === "object" && (part as { type?: string }).type === "text") {
+			const text = (part as { text?: unknown }).text;
+			if (typeof text === "string" && text.trim()) return text;
+		}
+	}
+	return undefined;
+}
+
+/** Pi's session picker uses the first user message when /name was never used. */
+export function deriveSessionTitle(state: SegmentState): string | undefined {
+	for (const entry of state.context.sessionManager.getBranch()) {
+		if (entry.type !== "message" || entry.message?.role !== "user") continue;
+		const text = firstUserText(entry.message.content)?.replace(/\s+/g, " ").trim();
+		if (text) return text;
+	}
+	return undefined;
+}
+
+/** Explicit /name wins; otherwise first user message; finally a short session id. */
+function sessionLabel(state: SegmentState): string {
+	const explicit = state.context.sessionName?.trim();
 	if (explicit) return explicit;
-	return "untitled";
+	const derived = state.context.sessionTitle?.trim() || deriveSessionTitle(state);
+	if (derived) return derived;
+	return `session ${state.context.sessionId.slice(0, 8)}`;
 }
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -101,7 +126,7 @@ function runStateText(state: SegmentState): string {
 export function buildItems(state: SegmentState): Item[] {
 	const { context, config } = state;
 	const items: Item[] = [
-		{ id: "session", accent: "thread", text: shortSessionName(context) },
+		{ id: "session", accent: "thread", text: sessionLabel(state) },
 		{ id: "cwd", accent: "path", text: shortenPath(context.cwd) || basename(context.cwd) },
 		{
 			id: "model",
@@ -135,7 +160,6 @@ export function buildItems(state: SegmentState): Item[] {
 		push("tokens", "usage", `↑${formatCount(input)} ↓${formatCount(output)}`);
 	}
 	if (cost > 0) push("cost", "usage", `$${cost.toFixed(3)}`);
-	push("clock", "metadata", state.now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }));
 	return items;
 }
 

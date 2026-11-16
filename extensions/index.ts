@@ -3,7 +3,7 @@
  *
  * Always shows: session name, project path, model, reasoning level, agent run
  * state, and Pi version. Optional extras: git branch, context, tokens, cost,
- * clock, and other extensions' status texts.
+ * and other extensions' status texts. No clock is shown.
  *
  * Install:
  *   pi -e /home/chr/pi-statusline
@@ -15,18 +15,21 @@
 
 import { VERSION, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { applyPreset, DEFAULT_CONFIG, isPreset, loadConfig, type StatuslineConfig } from "./config.ts";
-import { createFooter, invalidateFooter } from "./render.ts";
+import { createFooter } from "./render.ts";
+import { deriveSessionTitle } from "./segments.ts";
 import type { FooterComponent, RunState, StatusContext, TUI } from "./types.ts";
 
 const NAME = "pi-statusline";
 
-function toContext(ctx: ExtensionContext, name: string | undefined): StatusContext {
+function toContext(ctx: ExtensionContext, name: string | undefined, title: string | undefined): StatusContext {
 	return {
 		cwd: ctx.cwd,
 		mode: ctx.mode,
 		model: ctx.model,
 		thinkingLevel: ctx.thinkingLevel,
 		sessionName: name,
+		sessionTitle: title,
+		sessionId: ctx.sessionManager.getSessionId(),
 		piVersion: VERSION,
 		getContextUsage: () => ctx.getContextUsage(),
 		sessionManager: ctx.sessionManager,
@@ -45,6 +48,7 @@ export default function (pi: ExtensionAPI) {
 
 	const run: RunState = { idle: true, waitingForUser: false, promptDepth: 0, changedAt: Date.now() };
 	let sessionName: string | undefined;
+	let sessionTitle: string | undefined;
 	let contextSnapshot: StatusContext | undefined;
 
 	const refresh = (): void => {
@@ -55,7 +59,7 @@ export default function (pi: ExtensionAPI) {
 
 	const install = (ctx: ExtensionContext): void => {
 		if (ctx.mode !== "tui") return;
-		contextSnapshot = toContext(ctx, sessionName);
+		contextSnapshot = toContext(ctx, sessionName, sessionTitle);
 		ctx.ui.setFooter((tui, theme, footerData) => {
 			footer = createFooter({
 				config,
@@ -83,6 +87,14 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		config = await loadConfig(pi, ctx);
 		sessionName = ctx.sessionManager.getSessionName();
+		sessionTitle = deriveSessionTitle({
+			config,
+			context: toContext(ctx, sessionName, undefined),
+			run,
+			branch: null,
+			statuses: new Map(),
+			now: new Date(),
+		});
 		run.idle = ctx.isIdle();
 		if (config.enabled) install(ctx);
 		else uninstall(ctx);
@@ -91,6 +103,22 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_info_changed", async (event) => {
 		sessionName = event.name;
 		if (contextSnapshot) contextSnapshot.sessionName = sessionName;
+		refresh();
+	});
+
+	// An unnamed session is labelled with its first user message, matching the
+	// built-in session picker. Keep that label up to date as messages arrive.
+	pi.on("message_start", async (event) => {
+		const message = event.message as { role?: string; content?: unknown };
+		if (message.role !== "user" || contextSnapshot?.sessionTitle) return;
+		const text = typeof message.content === "string"
+			? message.content
+			: Array.isArray(message.content)
+				? (message.content.find((part) => part && typeof part === "object" && (part as { type?: string }).type === "text") as { text?: unknown } | undefined)?.text
+				: undefined;
+		if (typeof text !== "string" || !text.trim()) return;
+		sessionTitle = text.replace(/\s+/g, " ").trim();
+		if (contextSnapshot) contextSnapshot.sessionTitle = sessionTitle;
 		refresh();
 	});
 

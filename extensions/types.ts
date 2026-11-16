@@ -18,11 +18,20 @@ export interface StatusContext {
 	mode: string;
 	model: { id?: string; provider?: string; contextWindow?: number } | undefined;
 	thinkingLevel: string | undefined;
+	/** Explicit name from /name, if set. */
 	sessionName: string | undefined;
+	/** Fallback title derived from the first user message, like Pi's session picker. */
+	sessionTitle: string | undefined;
+	/** Short session id, used when neither a name nor a first message exists. */
+	sessionId: string;
 	piVersion: string;
 	getContextUsage: () => { tokens: number | null; contextWindow: number; percent: number | null } | undefined;
 	sessionManager: {
-		getBranch: (fromId?: string) => ReadonlyArray<{ type: string; message?: { role: string; usage?: unknown } }>;
+		getSessionId: () => string;
+		getBranch: (fromId?: string) => ReadonlyArray<{
+			type: string;
+			message?: { role: string; content?: unknown; usage?: unknown };
+		}>;
 	};
 }
 

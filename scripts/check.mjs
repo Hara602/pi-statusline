@@ -71,11 +71,15 @@ const context = {
 	mode: "tui",
 	model: { id: "remote-magpie/zenmux/tencent/hy4", contextWindow: 1000000 },
 	thinkingLevel: "max",
-	sessionName: "beautify-tui",
+	sessionName: undefined,
+	sessionTitle: undefined,
+	sessionId: "01a1e42d-7c7f-7313-b51a-c23f0df21805",
 	piVersion: "1.5.2",
 	getContextUsage: () => ({ tokens: 48000, contextWindow: 1000000, percent: 4.8 }),
 	sessionManager: {
+		getSessionId: () => "01a1e42d-7c7f-7313-b51a-c23f0df21805",
 		getBranch: () => [
+			{ type: "message", message: { role: "user", content: [{ type: "text", text: "搜索关于pi的插件，比如如何自定义状态栏" }] } },
 			{ type: "message", message: { role: "assistant", usage: { input: 1200, output: 300, cost: { total: 0.012 } } } },
 		],
 	},
@@ -95,15 +99,16 @@ for (const width of [200, 100, 60, 30]) {
 	const first = lines[0] ?? "";
 	const visible = first.replace(/\x1b\[[0-9;]*m/g, "");
 	if (visible.length > width) fail(`line exceeds width ${width}: ${visible.length}`);
-	if (!/beautify|beauti|bea…|b…|…/.test(visible)) fail(`session name missing at width ${width}`);
+	if (!/搜索|搜…|…/.test(visible)) fail(`session name missing at width ${width}`);
+	if (/\d{1,2}:\d{2}/.test(visible)) fail(`clock still present at width ${width}`);
 	for (const id of REQUIRED_ITEMS) {
 		if (id === "state") {
 			if (!/Work|Ready|Wait|⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏/.test(first)) fail(`missing run state at width ${width}`);
 		} else if (id === "session") {
 			if (width >= 100) {
-				if (!first.includes("beautify-tui")) fail(`missing session name at width ${width}`);
-			} else if (!/beaut|bea…|b…/.test(first)) {
-				fail(`missing session name at width ${width}`);
+				if (!first.includes("搜索关于pi")) fail(`missing derived session name at width ${width}`);
+			} else if (!/搜索|搜…|…/.test(first)) {
+				fail(`missing derived session name at width ${width}`);
 			}
 		} else if (id === "cwd") {
 			if (width >= 60) {
@@ -112,11 +117,7 @@ for (const width of [200, 100, 60, 30]) {
 				fail(`missing cwd at width ${width}`);
 			}
 		} else if (id === "model") {
-			if (width >= 100) {
-				if (!first.includes("remote-magpie")) fail(`missing model at width ${width}`);
-			} else if (!/remote|remo|rem…|r…/.test(first)) {
-				fail(`missing model at width ${width}`);
-			}
+			if (!/remote|remo|rem…|r…|…/.test(first)) fail(`missing model at width ${width}`);
 		} else if (id === "reasoning") {
 			if (!/reasoni|rea…|re…/.test(first)) fail(`missing reasoning at width ${width}`);
 		} else if (id === "version") {

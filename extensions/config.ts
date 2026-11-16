@@ -4,7 +4,8 @@
  * Six fields are always shown and cannot be disabled:
  *   session name · project path · model · reasoning · run state · pi version
  *
- * Optional extras (git branch, context, tokens, cost, clock) can be layered on.
+ * Optional extras (git branch, context, tokens, cost) can be layered on.
+ * There is deliberately no clock: the status line shows durable session state.
  * Configuration is read at startup and on `/statusline reload`.
  *
  * Environment overrides:
@@ -27,7 +28,7 @@ export interface StatuslineConfig {
 	preset: Preset;
 	/** Separator between items (Codex uses " · "). */
 	separator: string;
-	/** Show optional extras: git branch, context, tokens, cost, clock. */
+	/** Show optional extras: git branch, context, tokens, cost. */
 	extras: boolean;
 	/** Show a second line with other extensions' ctx.ui.setStatus() values. */
 	statuses: boolean;
@@ -35,7 +36,7 @@ export interface StatuslineConfig {
 	nerd: boolean;
 	/** Use Codex-like per-category colors instead of one dim color. */
 	colors: boolean;
-	/** Animation/clock refresh interval in ms; 0 disables the interval. */
+	/** Spinner animation refresh interval in ms; 0 disables the interval. */
 	refreshMs: number;
 }
 
