@@ -6,19 +6,19 @@
 
 | 项目 | 来源 | 示例 |
 | --- | --- | --- |
-| 当前会话名称 | `/name` 优先；未命名时取首条用户消息（与 Pi 会话选择器一致）；再回退短 session id | `搜索关于pi的插件，比如如何自定义状态栏` |
+| 当前会话名称 | `/name` 优先；未命名时取首条用户消息（与 Pi 会话选择器一致）；再回退短 session id；最多 15 个字符（含省略号） | `搜索关于pi的插件，比如如何…` |
 | 当前项目路径 | `ctx.cwd`（HOME 缩写为 `~`） | `~/pi-statusline` |
 | 模型名 | `ctx.model` + `model_select` | `remote-magpie/zenmux/tencent/hy4` |
 | 模型推理强度 | `ctx.thinkingLevel` + `thinking_level_select` | `reasoning:max` |
 | agent 运行状态 | `agent_start` / `agent_settled` / `ui_prompt_*` | `⠋ Working` / `Ready` / `Waiting for input` |
 | Pi 版本号 | 从 `@earendil-works/pi-coding-agent` 导入 `VERSION` | `pi v1.5.2` |
 
-**没有时钟、默认不显示费用**：状态栏只展示会话持久状态。未用 `/name` 命名会话时，自动用第一条用户消息作标题（和 `/resume` 会话选择器一致）；极端情况下（还没有任何用户消息）显示 `session <id前8位>`。可选附加项：git 分支、context 百分比、token、其他扩展的 `setStatus()` 文本。费用需显式开启 `showCost: true`。
+**没有时钟、默认不显示费用**：状态栏只展示会话持久状态。未用 `/name` 命名会话时，自动用第一条用户消息作标题（和 `/resume` 会话选择器一致）；极端情况下（还没有任何用户消息）显示 `session <id前8位>`。会话名称最多显示 15 个字符，超出时截断并加 `…`。可选附加项：git 分支、context 百分比、token、其他扩展的 `setStatus()` 文本。费用需显式开启 `showCost: true`。
 
 宽屏效果（纯文本示意）：
 
 ```text
-搜索关于pi的插件，比如如何自定义状态栏 · ~/pi-statusline · remote-magpie/zenmux/tencent/hy4 · reasoning:max · ⠋ Working · pi v1.5.2 · main · context:5% · ↑1.2k ↓300
+搜索关于pi的插件，比如如何… · ~/pi-statusline · remote-magpie/zenmux/tencent/hy4 · reasoning:max · ⠋ Working · pi v1.5.2 · main · context:5% · ↑1.2k ↓300
 ```
 
 窄屏时先隐藏可选项、再把最长的必显值加省略号，另外在极窄终端把分隔符从 `" · "` 收紧为 `"·"`：

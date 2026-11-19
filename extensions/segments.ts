@@ -105,13 +105,24 @@ export function deriveSessionTitle(state: SegmentState): string | undefined {
 	return undefined;
 }
 
+/** Keep the session name short enough that it cannot crowd out the other fields. */
+export const SESSION_LABEL_MAX = 15;
+
+/** Ellipsize plain text by characters, counting the ellipsis in the budget. */
+export function clipSessionLabel(text: string, max = SESSION_LABEL_MAX): string {
+	if (max <= 0) return "";
+	const chars = Array.from(text);
+	if (chars.length <= max) return text;
+	return `${chars.slice(0, max - 1).join("")}…`;
+}
+
 /** Explicit /name wins; otherwise first user message; finally a short session id. */
 function sessionLabel(state: SegmentState): string {
 	const explicit = state.context.sessionName?.trim();
-	if (explicit) return explicit;
+	if (explicit) return clipSessionLabel(explicit);
 	const derived = state.context.sessionTitle?.trim() || deriveSessionTitle(state);
-	if (derived) return derived;
-	return `session ${state.context.sessionId.slice(0, 8)}`;
+	if (derived) return clipSessionLabel(derived);
+	return clipSessionLabel(`session ${state.context.sessionId.slice(0, 8)}`);
 }
 
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];

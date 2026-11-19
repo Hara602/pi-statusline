@@ -130,6 +130,24 @@ for (const width of [200, 100, 60, 30]) {
 	footer.dispose?.();
 }
 
+// Session names are capped at 15 characters, including the ellipsis.
+{
+	const footer = createFooter({
+		config: { ...DEFAULT_CONFIG },
+		context: { ...context, sessionName: "这是一个非常长的会话名称超过十五个字符" },
+		footerData,
+		theme: plainTheme,
+		tui,
+		run,
+	});
+	const line = footer.render(200)[0] ?? "";
+	const session = line.split(" · ")[0] ?? "";
+	if (Array.from(session).length > 15) fail(`session name exceeds 15 characters: ${JSON.stringify(session)}`);
+	if (!session.endsWith("…")) fail(`long session name was not ellipsized: ${JSON.stringify(session)}`);
+	console.log(`check: session cap -> ${JSON.stringify(session)}`);
+	footer.dispose?.();
+}
+
 // Opt-in cost: keep one test that confirms `showCost: true` brings it back.
 {
 	const footer = createFooter({
